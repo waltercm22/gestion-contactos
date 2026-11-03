@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gestión de Contactos - AtenciónTotal</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 15px; }
+    form { display: grid; gap: 8px; margin-bottom: 20px; }
+    input, button { padding: 8px; font-size: 15px; }
+    button { cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    #mensaje { margin: 10px 0; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Gestión de Contactos</h1>
+
+  <form id="formulario">
+    <input type="text" id="name" placeholder="Nombre" required>
+    <input type="email" id="email" placeholder="Correo" required>
+    <input type="text" id="phone" placeholder="Teléfono">
+    <button type="submit">Guardar contacto</button>
+  </form>
+
+  <div id="mensaje"></div>
+
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Nombre</th><th>Correo</th><th>Teléfono</th><th>Acción</th></tr>
+    </thead>
+    <tbody id="lista"></tbody>
+  </table>
+
+  <script>
+    const API = '/api/contacts';
+    const mensaje = document.getElementById('mensaje');
+
+    async function cargarContactos() {
+      const res = await fetch(API);
+      const contactos = await res.json();
+      const lista = document.getElementById('lista');
+      lista.innerHTML = '';
+      contactos.forEach(c => {
+        const fila = document.createElement('tr');
+        [c.id, c.name, c.email, c.phone || ''].forEach(valor => {
+          const td = document.createElement('td');
+          td.textContent = valor;
+          fila.appendChild(td);
+        });
+        const tdAccion = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.textContent = 'Eliminar';
+        btn.onclick = () => eliminar(c.id);
+        tdAccion.appendChild(btn);
+        fila.appendChild(tdAccion);
+        lista.appendChild(fila);
+      });
+    }
+
+    async function eliminar(id) {
+      await fetch(`${API}/${id}`, { method: 'DELETE' });
+      mensaje.textContent = 'Contacto eliminado';
+      cargarContactos();
+    }
+
+    document.getElementById('formulario').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const contacto = {
+        name: document.getElementById('name').value,
+        email: document.getElementById('email').value,
+        phone: document.getElementById('phone').value
+      };
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contacto)
+      });
+      const data = await res.json();
+      if (res.status === 201) {
+        mensaje.textContent = 'Contacto creado con éxito (ID ' + data.id + ')';
+        e.target.reset();
+        cargarContactos();
+      } else {
+        mensaje.textContent = 'Error: ' + data.mensaje;
+      }
+    });
+
+    cargarContactos();
+  </script>
+</body>
+</html>
