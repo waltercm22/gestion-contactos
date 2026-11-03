@@ -12,16 +12,36 @@
     table { width: 100%; border-collapse: collapse; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
     #mensaje { margin: 10px 0; font-weight: bold; }
+
+    .encabezado { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .encabezado h1 { margin: 0; }
+    #estado { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: bold; background: #e0e0e0; }
+    #estado .punto { width: 10px; height: 10px; border-radius: 50%; background: #999; }
+    #estado.ok { background: #d4f4dd; color: #14692b; }
+    #estado.ok .punto { background: #1fa443; }
+    #estado.warn { background: #fff3cd; color: #8a6100; }
+    #estado.warn .punto { background: #e0a100; }
+    #estado.error { background: #fbd9d9; color: #9b1c1c; }
+    #estado.error .punto { background: #d62828; }
+
+    #tituloForm { margin: 20px 0 10px; font-size: 18px; }
+    #btnCancelar { display: none; }
+    td.acciones { display: flex; gap: 6px; border: none; border-bottom: 1px solid #ccc; }
   </style>
 </head>
 <body>
-  <h1>Gestión de Contactos</h1>
+  <div class="encabezado">
+    <h1>Gestión de Contactos</h1>
+    <span id="estado"><span class="punto"></span><span id="estadoTexto">Verificando...</span></span>
+  </div>
 
+  <h2 id="tituloForm">Nuevo contacto</h2>
   <form id="formulario">
     <input type="text" id="name" placeholder="Nombre" required>
     <input type="email" id="email" placeholder="Correo" required>
     <input type="text" id="phone" placeholder="Teléfono">
-    <button type="submit">Guardar contacto</button>
+    <button type="submit" id="btnGuardar">Guardar contacto</button>
+    <button type="button" id="btnCancelar">Cancelar edición</button>
   </form>
 
   <div id="mensaje"></div>
@@ -36,58 +56,146 @@
   <script>
     const API = '/api/contacts';
     const mensaje = document.getElementById('mensaje');
+    const estado = document.getElementById('estado');
+    const estadoTexto = document.getElementById('estadoTexto');
+    const formulario = document.getElementById('formulario');
+    const inName = document.getElementById('name');
+    const inEmail = document.getElementById('email');
+    const inPhone = document.getElementById('phone');
+    const btnGuardar = document.getElementById('btnGuardar');
+    const btnCancelar = document.getElementById('btnCancelar');
+    const tituloForm = document.getElementById('tituloForm');
+
+    let editandoId = null;
+
+    // Indicador de estado de la API y la base de datos
+    async function verificarEstado() {
+      const anterior = estado.className;
+      try {
+        const res = await fetch('/api/health', { cache: 'no-store' });
+        const data = await res.json();
+        if (data.baseDatos === 'conectada') {
+          estado.className = 'ok';
+          estadoTexto.textContent = 'API conectada · BD conectada';
+                } else {
+          estado.className = 'error';
+          estadoTexto.textContent = 'API desactivada (sin conexión a la base de datos)';
+        }
+      } catch (e) {
+        estado.className = 'error';
+        estadoTexto.textContent = 'API desactivada';
+      }
+      // Si la API volvió a estar disponible, recarga la lista
+      if (anterior === 'error' && estado.className === 'ok') cargarContactos();
+    }
 
     async function cargarContactos() {
-      const res = await fetch(API);
-      const contactos = await res.json();
       const lista = document.getElementById('lista');
-      lista.innerHTML = '';
-      contactos.forEach(c => {
-        const fila = document.createElement('tr');
-        [c.id, c.name, c.email, c.phone || ''].forEach(valor => {
-          const td = document.createElement('td');
-          td.textContent = valor;
-          fila.appendChild(td);
+      try {
+        const res = await fetch(API);
+        if (!res.ok) throw new Error('Error al obtener contactos');
+        const contactos = await res.json();
+        lista.innerHTML = '';
+        contactos.forEach(c => {
+          const fila = document.createElement('tr');
+          [c.id, c.name, c.email, c.phone || ''].forEach(valor => {
+            const td = document.createElement('td');
+            td.textContent = valor;
+            fila.appendChild(td);
+          });
+
+          const tdAccion = document.createElement('td');
+          tdAccion.style.display = 'flex';
+          tdAccion.style.gap = '6px';
+
+          const btnEditar = document.createElement('button');
+          btnEditar.textContent = 'Editar';
+          btnEditar.onclick = () => iniciarEdicion(c);
+
+          const btnEliminar = document.createElement('button');
+          btnEliminar.textContent = 'Eliminar';
+          btnEliminar.onclick = () => eliminar(c.id);
+
+          tdAccion.appendChild(btnEditar);
+          tdAccion.appendChild(btnEliminar);
+          fila.appendChild(tdAccion);
+          lista.appendChild(fila);
         });
-        const tdAccion = document.createElement('td');
-        const btn = document.createElement('button');
-        btn.textContent = 'Eliminar';
-        btn.onclick = () => eliminar(c.id);
-        tdAccion.appendChild(btn);
-        fila.appendChild(tdAccion);
-        lista.appendChild(fila);
-      });
+      } catch (e) {
+        lista.innerHTML = '<tr><td colspan="5">No se pudo cargar la lista de contactos</td></tr>';
+      }
+    }
+
+    function iniciarEdicion(c) {
+      editandoId = c.id;
+      inName.value = c.name || '';
+      inEmail.value = c.email || '';
+      inPhone.value = c.phone || '';
+      tituloForm.textContent = 'Editar contacto (ID ' + c.id + ')';
+      btnGuardar.textContent = 'Actualizar contacto';
+      btnCancelar.style.display = 'block';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function salirModoEdicion() {
+      editandoId = null;
+      formulario.reset();
+      tituloForm.textContent = 'Nuevo contacto';
+      btnGuardar.textContent = 'Guardar contacto';
+      btnCancelar.style.display = 'none';
     }
 
     async function eliminar(id) {
-      await fetch(`${API}/${id}`, { method: 'DELETE' });
-      mensaje.textContent = 'Contacto eliminado';
-      cargarContactos();
+      if (!confirm('¿Seguro que deseas eliminar este contacto?')) return;
+      try {
+        const res = await fetch(`${API}/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+        mensaje.textContent = 'Contacto eliminado';
+        if (editandoId === id) salirModoEdicion();
+        cargarContactos();
+      } catch (e) {
+        mensaje.textContent = 'Error: no se pudo eliminar el contacto';
+      }
     }
 
-    document.getElementById('formulario').addEventListener('submit', async (e) => {
+    btnCancelar.addEventListener('click', () => {
+      salirModoEdicion();
+      mensaje.textContent = 'Edición cancelada';
+    });
+
+    formulario.addEventListener('submit', async (e) => {
       e.preventDefault();
       const contacto = {
-        name: document.getElementById('name').value,
-        email: document.getElementById('email').value,
-        phone: document.getElementById('phone').value
+        name: inName.value,
+        email: inEmail.value,
+        phone: inPhone.value
       };
-      const res = await fetch(API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(contacto)
-      });
-      const data = await res.json();
-      if (res.status === 201) {
-        mensaje.textContent = 'Contacto creado con éxito (ID ' + data.id + ')';
-        e.target.reset();
-        cargarContactos();
-      } else {
-        mensaje.textContent = 'Error: ' + data.mensaje;
+      const url = editandoId ? `${API}/${editandoId}` : API;
+      const metodo = editandoId ? 'PUT' : 'POST';
+      try {
+        const res = await fetch(url, {
+          method: metodo,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(contacto)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          mensaje.textContent = editandoId
+            ? 'Contacto actualizado con éxito (ID ' + editandoId + ')'
+            : 'Contacto creado con éxito (ID ' + data.id + ')';
+          salirModoEdicion();
+          cargarContactos();
+        } else {
+          mensaje.textContent = 'Error: ' + (data.mensaje || 'no se pudo guardar');
+        }
+      } catch (error) {
+        mensaje.textContent = 'Error: la API está desactivada';
       }
     });
 
+    verificarEstado();
     cargarContactos();
+    setInterval(verificarEstado, 5000);
   </script>
 </body>
 </html>
